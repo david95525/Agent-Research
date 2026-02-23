@@ -10,6 +10,7 @@ from langchain.tools import tool
 from app.core.config import settings
 from app.utils.logger import setup_logger
 from matplotlib.font_manager import FontProperties, fontManager
+from typing import List, Literal
 
 # 根據 provider 動態載入
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
