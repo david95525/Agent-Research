@@ -157,13 +157,19 @@ def plot_health_chart(
     data: str,
     title: str = "健康趨勢分析",
     chart_type: Literal["line", "bar", "scatter"] = "line",
+    columns: List[str] = ["sys", "dia"],
+    labels: List[str] = ["收縮壓", "舒張壓"],
+    colors: List[str] = ["#e74c3c", "#3498db"],
+    unit: str = "數值",
 ):
     """
-    當用戶明確要求『繪圖』時調用。
-    chart_type: 支援 'line' (折線圖，適合看趨勢), 'bar' (柱狀圖，適合看數值對比), 'scatter' (散佈圖)。
+    動態生成健康趨勢圖表。
+    columns: 要從數據中提取的 Key (例如 ['weight'] 或 ['sys', 'dia'])
+    labels: 對應欄位的中文名稱 (例如 ['體重'] 或 ['收縮壓', '舒張壓'])
+    unit: Y 軸的單位標籤 (例如 'kg', 'mmHg', 'mg/dL')
     """
     try:
-        # 1. 數據解析與預處理
+        #  數據解析
         raw_json = json.loads(data)
         history = raw_json.get("history", [])
         if not history:
@@ -173,113 +179,74 @@ def plot_health_chart(
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date")
 
-        # 初始化畫布
+        #  畫布初始化
         plt.figure(figsize=(12, 7), dpi=150)
         plt.style.use("seaborn-v0_8-muted")
 
-        # 根據動態類型繪圖
-        if chart_type == "bar":
-            # 柱狀圖：適合對比特定日期的數值高低
-            bar_width = 0.35
-            index = range(len(df))
-            plt.bar(
-                [i - bar_width / 2 for i in index],
-                df["sys"],
-                bar_width,
-                label="收縮壓 (Sys)",
-                color="#e74c3c",
-                alpha=0.7,
-            )
-            plt.bar(
-                [i + bar_width / 2 for i in index],
-                df["dia"],
-                bar_width,
-                label="舒張壓 (Dia)",
-                color="#3498db",
-                alpha=0.7,
-            )
-            plt.xticks(index, df["date"].dt.strftime("%m-%d"), rotation=45)
+        #  核心繪圖邏輯：循環處理用戶要求的每一個指標
+        for i, col in enumerate(columns):
+            if col not in df.columns:
+                continue
 
-        elif chart_type == "scatter":
-            # 散佈圖：適合觀察數據點的分佈與離散程度
-            plt.scatter(
-                df["date"],
-                df["sys"],
-                s=80,
-                c="#e74c3c",
-                label="收縮壓 (Sys)",
-                edgecolors="white",
-                alpha=0.8,
-            )
-            plt.scatter(
-                df["date"],
-                df["dia"],
-                s=80,
-                c="#3498db",
-                label="舒張壓 (Dia)",
-                edgecolors="white",
-                alpha=0.8,
-            )
+            label = labels[i] if i < len(labels) else col
+            color = colors[i] if i < len(colors) else None
 
-        else:  # 預設 line
-            # 折線圖：最適合看長期的波動與趨勢
-            plt.plot(
-                df["date"],
-                df["sys"],
-                marker="o",
-                linestyle="-",
-                linewidth=2,
-                color="#e74c3c",
-                label="收縮壓 (Sys)",
-            )
-            plt.plot(
-                df["date"],
-                df["dia"],
-                marker="s",
-                linestyle="-",
-                linewidth=2,
-                color="#3498db",
-                label="舒張壓 (Dia)",
-            )
-            plt.fill_between(df["date"], df["sys"], df["dia"], color="gray", alpha=0.1)
+            if chart_type == "bar":
+                # 多指標柱狀圖偏移計算
+                width = 0.8 / len(columns)
+                offset = (i - len(columns) / 2 + 0.5) * width
+                plt.bar(
+                    range(len(df)),
+                    df[col],
+                    width,
+                    label=label,
+                    color=color,
+                    alpha=0.7,
+                    align="center",
+                )
+                plt.xticks(range(len(df)), df["date"].dt.strftime("%m-%d"), rotation=45)
 
-        # 圖表通用設定
+            elif chart_type == "scatter":
+                plt.scatter(
+                    df["date"],
+                    df[col],
+                    s=80,
+                    label=label,
+                    color=color,
+                    edgecolors="white",
+                    alpha=0.8,
+                )
+
+            else:  # line
+                plt.plot(
+                    df["date"],
+                    df[col],
+                    marker="o",
+                    label=label,
+                    color=color,
+                    linewidth=2,
+                )
+
+        #  圖表通用設定 (使用你之前修正的 zh_font)
         plt.title(title, fontproperties=zh_font, fontsize=20, pad=20)
-        plt.xlabel("測量日期", fontproperties=zh_font, fontsize=14)
-        plt.ylabel("血壓值 (mmHg)", fontproperties=zh_font, fontsize=14)
-
-        plt.legend(prop=zh_font, loc="upper right", frameon=True)
-
-        # 加入正常值參考線 (120/80)
-        plt.axhline(y=120, color="#c0392b", linestyle=":", alpha=0.6)
-        plt.axhline(y=80, color="#2980b9", linestyle=":", alpha=0.6)
-        # 標註參考線文字
-        plt.text(
-            df["date"].iloc[0],
-            122,
-            "收縮壓標準 (120)",
-            fontproperties=zh_font,
-            color="#c0392b",
-            alpha=0.8,
-        )
-        plt.text(
-            df["date"].iloc[0],
-            82,
-            "舒張壓標準 (80)",
-            fontproperties=zh_font,
-            color="#2980b9",
-            alpha=0.8,
-        )
+        plt.xlabel("測量日期", fontproperties=zh_font, fontsize=12)
+        plt.ylabel(f"{unit}", fontproperties=zh_font, fontsize=12)
+        plt.legend(prop=zh_font, loc="upper right")
         plt.grid(True, linestyle="--", alpha=0.5)
+        #  特殊參考線 (如果是血壓則保留標準線)
+        if "sys" in columns:
+            plt.axhline(y=120, color="#c0392b", linestyle=":", alpha=0.5)
+        if "dia" in columns:
+            plt.axhline(y=80, color="#2980b9", linestyle=":", alpha=0.5)
+
         plt.tight_layout()
-        # 輸出為 Base64
+
+        # 輸出 Base64
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close()
         buf.seek(0)
-
-        img_base64 = base64.b64encode(buf.read()).decode("utf-8")
-        return f"data:image/png;base64,{img_base64}"
+        return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
 
     except Exception as e:
-        return f"圖表生成過程中發生錯誤: {str(e)}"
+        return f"圖表生成失敗: {str(e)}"

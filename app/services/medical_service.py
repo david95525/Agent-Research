@@ -13,7 +13,7 @@ from app.services.tools.medical_tools import (
     get_user_health_data,
     plot_health_chart,
 )
-
+from app.schemas.agent import ChartParams
 from app.utils.logger import setup_logger
 
 logger = setup_logger("AgentService")
@@ -233,41 +233,53 @@ class MedicalAgentService(BaseAgent):
         return {"final_response": combined}
 
     async def node_visualizer(self, state: AgentState):
-        """繪圖專家節點：調用工具產出圖表"""
-        # 取得數據（從 node_health_analyst 之前存好的 raw_data 或重新獲取）
+        """繪圖專家節點：動態判斷指標並調用工具產出圖表"""
+        # 取得數據
         raw_data = state.get("context_data")
         if not raw_data:
             raw_data = get_user_health_data.invoke({"user_id": state["user_id"]})
-            logger.warning(
-                f"[Visualizer] State 中無數據，已重新抓取用戶 {state['user_id']} 數據"
-            )
-
-        # 讓 LLM 決定參數（例如判斷用戶要 bar 還是 line）
-        visualizer_instruction = (
-            "你現在是『數據視覺化專家』。請根據用戶要求，從 ['line', 'bar', 'scatter'] 中挑選最適合的 chart_type。\n"
-            "- 趨勢/隨意要求：line\n"
-            "- 對比/比較數值：bar\n"
-            "- 離散程度/大量點：scatter\n"
-            "請僅回傳工具調用所需的參數。"
+        logger.warning(
+            f"[Visualizer] State 中無數據，已重新抓取用戶 {state['user_id']} 數據"
         )
-        type_res = await self.llm.ainvoke(visualizer_instruction)
-        # 調用工具
-        selected_type = "line"
-        content = type_res.content.lower()
-        if "bar" in content or "長條" in content:
-            selected_type = "bar"
-        if "scatter" in content or "散佈" in content:
-            selected_type = "scatter"
-        # 執行繪圖工具
+        # 使用 with_structured_output 確保 LLM 回傳的是 ChartParams 物件而非字串
+        structured_llm = self.llm.with_structured_output(ChartParams)
+        # 升級指令：讓 LLM 決定要畫什麼指標
+        # 注意：這裡我們傳入 raw_data 的範例，讓 LLM 知道有哪些欄位可用
+        data_sample = raw_data[:500]  # 擷取部分數據供 LLM 參考
+        visualizer_prompt = (
+            "你是一位資深的『數據視覺化專家』。請根據以下提供的數據樣本與用戶的對話意圖，"
+            "決定最適合的繪圖參數：\n\n"
+            f"【數據樣本】\n{data_sample}\n\n"
+            "【決策準則】\n"
+            "1. 指標選擇：檢查數據中的 Key，選擇用戶最感興趣或最相關的指標 (如: sys, dia, weight, bmi, glucose 等)。\n"
+            "2. 類型挑選：趨勢分析優先用 'line'；數值大小對比用 'bar'；分佈分析用 'scatter'。\n"
+            "3. 標題設計：標題需包含用戶 ID 或數據時間範圍，使其具備專業報告感。\n"
+            "4. 單位確認：確保 unit 與選擇的數據 Key 完全匹配 (例如 sys 對應 mmHg, weight 對應 kg)。"
+        )
+
+        # 獲取 LLM 決策
+        params: ChartParams = await structured_llm.ainvoke(visualizer_prompt)
+        # 執行繪圖工具 (傳入動態參數)
         chart_base64 = plot_health_chart.invoke(
             {
                 "data": raw_data,
-                "title": f"用戶 {state['user_id']} 健康數據趨勢",
-                "chart_type": selected_type,
+                "title": params.title,
+                "chart_type": params.chart_type,
+                "columns": params.columns,
+                "labels": params.labels,
+                "unit": params.unit,
             }
         )
+
         # 封裝回傳
-        final_text = f"📊 **已為您生成{selected_type}趨勢圖表**：\n\n![Health Chart]({chart_base64})"
+        chart_type_zh = {"line": "折線", "bar": "長條", "scatter": "散佈"}.get(
+            params.chart_type, "趨勢"
+        )
+        final_text = (
+            f"**已根據您的要求生成{chart_type_zh}圖表**：\n"
+            f"分析指標：{', '.join(params.labels)}\n\n"
+            f"![Health Chart]({chart_base64})"
+        )
 
         return {"final_response": final_text}
 
