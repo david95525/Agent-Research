@@ -1,3 +1,4 @@
+# app/services/financiak_service.py
 import os
 from app.services.base import BaseAgent
 from deepagents import create_deep_agent
@@ -28,8 +29,13 @@ class FinancialAgentService(BaseAgent):
         self.workflow = self._build_workflow()
         self.manual_app = self.workflow.compile()
         # DeepAgents
-        base_dir = "/app" if os.path.exists("/app") else os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base_dir = (
+            "/app"
+            if os.path.exists("/app")
+            else os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+        )
         skills_path = os.path.join(base_dir, "skills")
         logger.info(f"註冊官方技能路徑: {skills_path}")
         self.official_deep_agent = create_deep_agent(
@@ -56,7 +62,7 @@ class FinancialAgentService(BaseAgent):
         return graph
 
     async def node_market_research(self, state):
-        #研究節點：負責收集數據
+        # 研究節點：負責收集數據
         symbol = state["symbol"]
         logger.info(f"[Financial Agent] 正在研究: {symbol}")
         # 格式校正：如果是 4 位數字，自動補後綴
@@ -74,33 +80,37 @@ class FinancialAgentService(BaseAgent):
 
     async def node_risk_analysis(self, state):
         logger.info("[Financial Agent] 正在進行風險評估...")
-        skill_config = load_specialized_skill.invoke(
-            {"skill_name": "financial_expert"})
+        skill_config = load_specialized_skill.invoke({"skill_name": "financial_expert"})
         # 讓 LLM 閱讀數據
-        prompt = (f"你現在扮演以下專業角色：\n"
-                  f"{skill_config}\n\n"
-                  f"請根據上述『執行細則』，分析以下原始數據並判斷風險等級：\n"
-                  f"原始數據：\n{state['data_raw']}")
+        prompt = (
+            f"你現在扮演以下專業角色：\n"
+            f"{skill_config}\n\n"
+            f"請根據上述『執行細則』，分析以下原始數據並判斷風險等級：\n"
+            f"原始數據：\n{state['data_raw']}"
+        )
         res = await self.llm.ainvoke(prompt)
         risk = "中"
-        if "高" in res.content: risk = "高"
-        elif "低" in res.content: risk = "低"
+        if "高" in res.content:
+            risk = "高"
+        elif "低" in res.content:
+            risk = "低"
 
         return {"risk_level": risk, "analysis_report": res.content}
 
     async def node_final_decision(self, state):
         """決策節點：產出最後報告"""
         logger.info("[Financial Agent] 正在產出最終決策...")
-        skill_config = load_specialized_skill.invoke(
-            {"skill_name": "financial_expert"})
+        skill_config = load_specialized_skill.invoke({"skill_name": "financial_expert"})
         current_date = datetime.now().strftime("%Y-%m-%d")
-        prompt = (f"今天是 {current_date}。\n"
-                  f"請嚴格遵守以下【輸出規範】處理數據：\n\n"
-                  f"{skill_config}\n\n"
-                  f"【待處理數據】\n"
-                  f"標的：{state['symbol']}\n"
-                  f"數據：{state['data_raw']}\n"
-                  f"風險分析：{state['analysis_report']}")
+        prompt = (
+            f"今天是 {current_date}。\n"
+            f"請嚴格遵守以下【輸出規範】處理數據：\n\n"
+            f"{skill_config}\n\n"
+            f"【待處理數據】\n"
+            f"標的：{state['symbol']}\n"
+            f"數據：{state['data_raw']}\n"
+            f"風險分析：{state['analysis_report']}"
+        )
         res = await self.llm.ainvoke(prompt)
         return {"final_response": res.content}
 
@@ -112,7 +122,7 @@ class FinancialAgentService(BaseAgent):
             "data_raw": "",
             "analysis_report": "",
             "risk_level": "",
-            "final_response": ""
+            "final_response": "",
         }
         return await self.manual_app.ainvoke(initial_state)
 
@@ -121,17 +131,17 @@ class FinancialAgentService(BaseAgent):
         logger.info(f"執行 [官方 DeepAgents] 模式: {symbol}")
         # 官方封裝通常使用標準的訊息格式
         input_data = {
-            "messages": [{
-                "role":
-                "user",
-                "content":
-                f"請啟動 financial_expert 專業技能，深度分析股票 {symbol} 並給予投資建議。"
-            }]
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"請啟動 financial_expert 專業技能，深度分析股票 {symbol} 並給予投資建議。",
+                }
+            ]
         }
         result = await self.official_deep_agent.ainvoke(input_data)
         logger.debug(f"DEBUG OFFICIAL RESULT: {result}")
         # 提取最後一條訊息作為回應
         return {
             "final_response": result["messages"][-1].content,
-            "steps": result.get("steps", [])
+            "steps": result.get("steps", []),
         }

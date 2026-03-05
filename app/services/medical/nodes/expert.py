@@ -1,6 +1,6 @@
 from app.services.tools.system_tools import load_specialized_skill
 from app.services.tools.medical_tools import (
-    search_device_manual,
+    get_device_knowledge,
     plot_health_chart,
     get_user_health_data,
 )
@@ -20,7 +20,7 @@ class ExpertNodes:
         # 動態加載Skills
         skill_content = load_specialized_skill.invoke({"skill_name": "device_expert"})
         # 執行 RAG
-        raw_info = await search_device_manual.ainvoke({"query": state["input_message"]})
+        raw_info = await get_device_knowledge.ainvoke({"query": state["input_message"]})
         logger.info(f"[RAG] 檢索完成，獲取資料長度: {len(raw_info)} 字元")
         prompt = (
             f"### 專業設備知識庫 ###\n{raw_info}\n\n"

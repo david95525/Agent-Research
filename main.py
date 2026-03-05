@@ -1,4 +1,4 @@
-import os
+# main.py
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -32,6 +32,12 @@ async def chat_page():
 async def deep_page():
     logger.info("進入 Deep Agent 研究區")
     return FileResponse("static/deep.html")
+
+
+@app.get("/demo")
+async def demo_page():
+    logger.info("進入產品 Demo 演示頁面")
+    return FileResponse("static/demo.html")
 
 
 # 靜態檔案掛載

@@ -16,7 +16,7 @@ from typing import List, Literal
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from langchain_aws import BedrockEmbeddings
-from langchain_postgres.vectorstores import PGVector
+#from langchain_postgres.vectorstores import PGVector
 
 # 初始化 Logger
 logger = setup_logger("MedicalTools")
@@ -44,55 +44,105 @@ def get_active_embeddings():
 embeddings = get_active_embeddings()
 
 
+#@tool
+# --- 原先的 RAG 函數已停用 (保留供未來參考) ---
+# async def search_device_manual(query: str) -> str:
+#     """獲取儀器官方說明書內容"""
+#     try:
+#         provider = os.getenv("EMBEDDING_PROVIDER", "google").lower()
+#         collection_name = f"docs_{provider}"
+
+#         # 優化檢索詞
+#         search_query = query
+#         if len(query) < 10 and any(char.isdigit() for char in query):
+#             search_query = f"血壓計 錯誤代碼 {query} 的意義與排除故障方法"
+
+#         vector_store = PGVector(
+#             embeddings=embeddings,
+#             connection=settings.sqlalchemy_database_url,
+#             collection_name=collection_name,
+#         )
+
+#         logger.info(f"🔍 [RAG] 執行檢索. Original: {query} | Augmented: {search_query}")
+
+#         # 診斷數據庫連線與筆數
+#         with vector_store.session_maker() as session:
+#             count_query = text(
+#                 """
+#                 SELECT count(*) FROM langchain_pg_embedding 
+#                 WHERE collection_id = (SELECT uuid FROM langchain_pg_collection WHERE name = :name)
+#             """
+#             )
+#             count = session.execute(count_query, {"name": collection_name}).scalar()
+#             logger.debug(f"[DB Check] Collection '{collection_name}' 總筆數: {count}")
+
+#         # 執行檢索
+#         docs = vector_store.similarity_search(search_query, k=8)
+
+#         if not docs:
+#             logger.warning(f"[RAG] 檢索結果為空！Query: {search_query}")
+#             return "說明書中目前查無此內容，請諮詢客服。"
+
+#         # 記錄抓到的片段摘要 (DEBUG 模式下可見)
+#         logger.debug(f"[RAG] 命中 {len(docs)} 個片段")
+#         for i, doc in enumerate(docs[:3]):
+#             clean_snippet = doc.page_content[:100].replace("\n", " ")
+#             logger.debug(f"  Rank {i+1} Snippet: {clean_snippet}...")
+
+#         return "\n\n".join([doc.page_content for doc in docs])
+
+#     except Exception as e:
+#         logger.error(f"[RAG Error] 檢索失敗: {str(e)}", exc_info=True)
+#         return f"RAG 查詢失敗: {str(e)}"
+
+
 @tool
-async def search_device_manual(query: str) -> str:
-    """獲取儀器官方說明書內容的唯一來源。"""
-    try:
-        provider = os.getenv("EMBEDDING_PROVIDER", "google").lower()
-        collection_name = f"docs_{provider}"
+# 模擬資料functiom
+async def get_device_knowledge(query: str) -> str:
+    """
+    獲取 Microlife 儀器（如血壓計、耳溫槍）的官方說明書、錯誤代碼 (Err) 與排除故障方法。
+    這是關於設備硬體操作、電池更換、維護與技術規格的唯一權威來源。
+    """
+    logger.info(f"🔍 [Knowledge Base] 收到設備查詢: {query}")
 
-        # 優化檢索詞
-        search_query = query
-        if len(query) < 10 and any(char.isdigit() for char in query):
-            search_query = f"血壓計 錯誤代碼 {query} 的意義與排除故障方法"
+    # 模擬設備知識庫 (建議之後可移至 data/manual_kb.json)
+    MOCK_KB = {
+        "err1": "【錯誤代碼 Err 1】：信號太弱。原因：感測不到脈搏。處理：重新綁緊袖帶，保持手臂靜止並對準心臟位置。",
+        "err2": "【錯誤代碼 Err 2】：錯誤信號。原因：測量時受干擾（如說話、移動）。處理：靜坐 5 分鐘後重新測量。",
+        "err3": "【錯誤代碼 Err 3】：袖帶壓力異常。原因：袖帶未正確充氣。處理：檢查袖帶是否破損或漏氣，確保插頭接穩。",
+        "err5": "【錯誤代碼 Err 5】：結果異常。原因：測量環境不穩定。處理：請確認袖帶綁法，重新開機後再測。",
+        "hi_lo": "【顯示 HI / LO】：脈搏或壓力超出測量範疇。HI 代表過高，LO 代表過低。請確認操作流程是否正確。",
+        "battery": "【電池符號】：電量不足。請立即更換四顆全新的 1.5V AA 鹼性電池，切勿混用新舊電池。",
+        "afib": "【AFIB 圖示】：心房顫動偵測。這是 Microlife 專利技術，若此圖示連續出現三次以上，建議諮詢專業醫師。",
+    }
 
-        vector_store = PGVector(
-            embeddings=embeddings,
-            connection=settings.sqlalchemy_database_url,
-            collection_name=collection_name,
-        )
+    # 簡單模擬檢索邏輯：尋找 query 中的關鍵字
+    query_lower = query.lower()
+    results = []
 
-        logger.info(f"🔍 [RAG] 執行檢索. Original: {query} | Augmented: {search_query}")
+    # 針對 Err 關鍵字做特殊優化
+    import re
 
-        # 診斷數據庫連線與筆數
-        with vector_store.session_maker() as session:
-            count_query = text(
-                """
-                SELECT count(*) FROM langchain_pg_embedding 
-                WHERE collection_id = (SELECT uuid FROM langchain_pg_collection WHERE name = :name)
-            """
-            )
-            count = session.execute(count_query, {"name": collection_name}).scalar()
-            logger.debug(f"[DB Check] Collection '{collection_name}' 總筆數: {count}")
+    err_match = re.search(r"err\s*(\d+)", query_lower)
+    if err_match:
+        err_key = f"err{err_match.group(1)}"
+        if err_key in MOCK_KB:
+            results.append(MOCK_KB[err_key])
 
-        # 執行檢索
-        docs = vector_store.similarity_search(search_query, k=8)
+    # 一般關鍵字比對
+    keywords = ["battery", "電池", "afib", "心房", "袖帶", "hi", "lo"]
+    for k in keywords:
+        if k in query_lower:
+            # 找到對應內容 (這裡簡化處理)
+            for key, content in MOCK_KB.items():
+                if k in key or k in content:
+                    if content not in results:
+                        results.append(content)
 
-        if not docs:
-            logger.warning(f"[RAG] 檢索結果為空！Query: {search_query}")
-            return "說明書中目前查無此內容，請諮詢客服。"
+    if not results:
+        return "抱歉，目前在說明書中找不到關於此問題的具體說明。建議您確保代碼輸入正確，或聯絡 Microlife 售後服務。"
 
-        # 記錄抓到的片段摘要 (DEBUG 模式下可見)
-        logger.debug(f"[RAG] 命中 {len(docs)} 個片段")
-        for i, doc in enumerate(docs[:3]):
-            clean_snippet = doc.page_content[:100].replace("\n", " ")
-            logger.debug(f"  Rank {i+1} Snippet: {clean_snippet}...")
-
-        return "\n\n".join([doc.page_content for doc in docs])
-
-    except Exception as e:
-        logger.error(f"[RAG Error] 檢索失敗: {str(e)}", exc_info=True)
-        return f"RAG 查詢失敗: {str(e)}"
+    return "\n\n".join(results)
 
 
 @tool
