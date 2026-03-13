@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.api_router import router as api_router, lifespan
+from app.api.test_router import router as test_router
 from app.utils.logger import setup_logger
 
 logger = setup_logger("MainApp")
@@ -12,7 +13,7 @@ app = FastAPI(title="AI Agent Research Lab", lifespan=lifespan)
 
 # 註冊 API 路由
 app.include_router(api_router, prefix="/api/v1", tags=["API"])
-
+app.include_router(test_router, prefix="/api/test", tags=["QA Testing"])
 # 路由
 
 
@@ -20,6 +21,13 @@ app.include_router(api_router, prefix="/api/v1", tags=["API"])
 async def index():
     logger.info("存取總導覽頁")
     return FileResponse("static/index.html")
+
+
+# QA 儀表板
+@app.get("/qa")
+async def qa_dashboard():
+    logger.info("品管部門進入自動化測試儀表板")
+    return FileResponse("static/test_dashboard.html")
 
 
 @app.get("/chat")
@@ -45,7 +53,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    is_local = os.environ.get("ENV") == "development" or "PORT" not in os.environ
+    is_local = os.environ.get(
+        "ENV") == "development" or "PORT" not in os.environ
     listen_host = "0.0.0.0"
 
     if is_local:

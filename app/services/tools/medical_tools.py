@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from langchain.tools import tool
 from matplotlib.font_manager import FontProperties, fontManager
 from typing import List, Literal
-
+from functools import lru_cache
 from app.core.config import settings
 from app.utils.logger import setup_logger
 
@@ -46,7 +46,7 @@ def get_active_embeddings():
         raise ValueError(f"不支援的 Provider: {provider}")
 
 
-embeddings = get_active_embeddings()
+#embeddings = get_active_embeddings()
 
 # @tool
 # --- 原先的 RAG 函數已停用 (保留供未來參考) ---
@@ -235,25 +235,26 @@ async def get_user_health_data(user_id: str,
         return json.dumps({"status": "error", "message": "網路連線失敗，無法取得數據"})
 
 
-DOCKER_FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+@lru_cache(maxsize=1)
+def get_zh_font():
+    """只有在需要繪圖時才執行的字體加載邏輯"""
+    DOCKER_FONT_PATH = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    try:
+        if os.path.exists(DOCKER_FONT_PATH):
+            return FontProperties(fname=DOCKER_FONT_PATH)
 
-try:
-    if os.path.exists(DOCKER_FONT_PATH):
-        # 優先使用確定的 Docker 路徑
-        zh_font = FontProperties(fname=DOCKER_FONT_PATH)
-    else:
-        # 如果路徑不存在（例如本地開發），則搜尋系統清單
+        # 搜尋系統中的 Noto Sans
         noto_font = next(
             (f.fname
              for f in fontManager.ttflist if "Noto Sans CJK" in f.name), None)
         if noto_font:
-            zh_font = FontProperties(fname=noto_font)
-        else:
-            # 最後保險：使用預設無襯線字體
-            zh_font = FontProperties(family="sans-serif")
-except Exception as e:
-    print(f"Font loading error: {e}")
-    zh_font = FontProperties(family="sans-serif")
+            return FontProperties(fname=noto_font)
+
+        # 安全退場機制：使用系統預設
+        return FontProperties(family=['sans-serif'])
+    except Exception as e:
+        logger.warning(f"字體加載失敗，使用預設值: {e}")
+        return FontProperties(family=['sans-serif'])
 
 
 @tool
@@ -332,7 +333,7 @@ def plot_health_chart(
                     color=color,
                     linewidth=2,
                 )
-
+        zh_font = get_zh_font()
         #  圖表通用設定 (使用你之前修正的 zh_font)
         plt.title(title, fontproperties=zh_font, fontsize=20, pad=20)
         plt.xlabel("測量日期", fontproperties=zh_font, fontsize=12)

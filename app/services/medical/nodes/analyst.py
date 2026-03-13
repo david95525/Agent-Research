@@ -16,23 +16,26 @@ class HealthAnalystNodes:
 
     async def node_query_parser(self, state: AgentState):
         """
-        專門節點：分析用戶意圖，提取 API 需要的日期範圍。
+        專門節點：分析用戶意圖，提取 API 需要的日期範圍。強化日期解析，支援更多模糊描述
         """
         logger.info(f"[Parser] 正在解析用戶請求中的時間範圍: {state['input_message']}")
         # 確保這裡的代碼縮排是 4 個空格（相對於 async def）
         current_date = datetime.now().strftime("%Y-%m-%d")
         prompt = (f"今天是 {current_date}。\n"
                   f"用戶問題：{state['input_message']}\n\n"
-                  "請從問題中提取日期範圍。如果是『最近』或『沒提到時間』，請保持為 null。\n"
-                  '請回傳 JSON 格式：{"start": "yyyy-mm-dd", "end": "yyyy-mm-dd"}')
+                  "任務：提取日期範圍。請將『去年』、『上個月』、『這三天』等口語轉化為具體日期。\n"
+                  "若用戶沒提到時間或說最近，請保持為 null。\n"
+                  "【格式規範】請僅回傳 JSON：\n"
+                  '{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}')
         res = await self.llm.ainvoke(prompt)
         content = res.content.strip()
         # 使用正則表達式提取 JSON 部分
         json_match = re.search(r"\{.*\}", content, re.DOTALL)
-        if json_match:
-            content = json_match.group(0)
         try:
-            dates = json.loads(content)
+            dates = json.loads(json_match.group(0)) if json_match else {
+                "start": None,
+                "end": None
+            }
             logger.info(f"[Parser Success] 解析結果: {dates}")
         except Exception as e:
             logger.error(f"[Parser Error] 依然無法解析: {content}")
@@ -50,17 +53,14 @@ class HealthAnalystNodes:
         # 從 Parser 拿到的時間範圍
         start = state.get("query_start")
         end = state.get("query_end")
-
+        user_id = state.get("user_id", "default_user")
         logger.info(f"[Debug] 從 Parser 接收到的時間範圍: start={start}, end={end}")
 
         # 呼叫工具 (此處不消耗 Gemini 配額)
         raw_response = await get_user_health_data.ainvoke({
-            "user_id":
-            state["user_id"],
-            "start_date":
-            start,
-            "end_date":
-            end,
+            "user_id": user_id,
+            "start_date": start,
+            "end_date": end,
         })
         count = 0
         records = []
@@ -79,16 +79,14 @@ class HealthAnalystNodes:
 
         # 建立純查詢的預設回覆
         time_display = f"{start} 至 {end}" if start and end else "最近"
-        text_reply = f"已為您找到 {time_display} 期間共 {count} 筆量測紀錄。"
+        text_reply = ""
+        if state.get("intent") == "health_query":
+            text_reply = f"已為您找到 {time_display} 期間共 {count} 筆量測紀錄。"
         return {
-            "context_data":
-            raw_response,
-            "data_count":
-            count,
-            "ui_data":
-            ui_data,
-            "final_response":
-            text_reply if state.get("intent") == "health_query" else ""
+            "context_data": raw_response,
+            "data_count": count,
+            "ui_data": ui_data,
+            "final_response": text_reply
         }
 
     async def node_health_analyst(self, state: AgentState):
@@ -97,7 +95,9 @@ class HealthAnalystNodes:
         """
 
         raw_data = state.get("context_data")
-
+        if not raw_data or state.get("data_count", 0) == 0:
+            time_range = f"{state.get('query_start')} 至 {state.get('query_end')}"
+            return {"final_response": f"我在該時段（{time_range}）找不到您的紀錄，無法進行分析。"}
         data_list = []
         try:
             # 假設 raw_data 是字串格式，先轉 JSON
