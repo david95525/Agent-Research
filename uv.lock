@@ -3063,7 +3063,7 @@ wheels = [
 ]
 
 [[package]]
-name = "python-agent"
+name = "Agent-Research"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
