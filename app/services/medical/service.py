@@ -146,11 +146,27 @@ class MedicalAgentService(BaseAgent):
         prompt_template = prompt_manager.get_template("general_assistant")
         full_prompt = prompt_template.format_messages(
             input_message=state['input_message'])
+        logger.info(full_prompt)
         res = await self.llm.ainvoke(full_prompt)
         return {"final_response": res.content}
 
+    def _normalize_content(self, content):
+        """將 AIMessage.content 統一轉換為字串，相容 Bedrock 陣列格式"""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                elif hasattr(block, "text"):
+                    text_parts.append(block.text)
+            return "".join(text_parts)
+        return str(content) if content else ""
+
     async def handle_chat(self, user_id: str, message: str):
-        """ 串流處理邏輯保持不變 """
+        """ 串流處理邏輯 """
         if self.app is None:
             await self.initialize()
 
@@ -174,7 +190,8 @@ class MedicalAgentService(BaseAgent):
             if kind == "on_chat_model_stream":
                 if node_name == "router":
                     continue
-                content = event["data"]["chunk"].content
+                # 關鍵修正：標準化內容格式
+                content = self._normalize_content(event["data"]["chunk"].content)
                 if content:
                     yield {"type": "stream", "content": content}
 
@@ -195,8 +212,10 @@ class MedicalAgentService(BaseAgent):
                 mermaid_graph = self.app.get_graph().draw_mermaid()
                 
                 if isinstance(final_output, dict) and "final_response" in final_output:
+                    # 關鍵修正：標準化最終回覆內容
+                    final_text = self._normalize_content(final_output.get("final_response", ""))
                     compat_data = {
-                        "text": final_output.get("final_response", ""),
+                        "text": final_text,
                         "graph": mermaid_graph,
                         "intent": final_output.get("intent", "general"),
                         "is_emergency": final_output.get("is_emergency", False),

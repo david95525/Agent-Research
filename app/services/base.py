@@ -14,9 +14,9 @@ class BaseAgent(ABC):
         self.llm = self._get_llm()
 
     def _get_llm(self):
-        """根據環境變數返回對應的 LLM 實例"""
+        """根據配置返回對應的 LLM 實例"""
         # 注意：通常 Embedding 與 LLM Provider 會設為同一個，但也可以分開
-        provider = os.getenv("LLM_PROVIDER", "google").lower()
+        provider = settings.llm_provider.lower()
 
         if provider == "google":
             return ChatGoogleGenerativeAI(
@@ -28,11 +28,11 @@ class BaseAgent(ABC):
                               api_key=os.getenv("OPENAI_API_KEY"),
                               temperature=0)
         elif provider == "bedrock":
-            # 未來上 AWS 之後的配置
             return ChatBedrock(
-                model_id=
-                "anthropic.claude-3-5-sonnet-20240620-v1:0",  # 或 Llama 3
-                region_name=os.getenv("AWS_REGION", "us-east-1"),
+                model_id=settings.aws_bedrock_model_id,
+                region_name=settings.aws_region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
                 model_kwargs={"temperature": 0})
         else:
             raise ValueError(f"不支援的 LLM Provider: {provider}")

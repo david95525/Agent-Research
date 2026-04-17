@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.services.medical.service import MedicalAgentService
 from app.services.financial_service import FinancialAgentService
+from app.core.config import settings
 
 from app.utils.logger import setup_logger
 import time
@@ -14,6 +15,14 @@ import time
 router = APIRouter()
 
 logger = setup_logger("ApiRouter")
+
+
+@router.get("/config")
+async def get_config():
+    return {
+        "llm_provider": settings.llm_provider,
+        "model_id": settings.aws_bedrock_model_id if settings.llm_provider == "bedrock" else "gemini-2.5-flash"
+    }
 
 
 # 定義請求模型

@@ -5,11 +5,19 @@ import os
 class Settings(BaseSettings):
     port: int = 8000
     environment: str = "development"
-    active_ai_provider: str = "google"
+    llm_provider: str = "google"
     api_domain: str
     api_token: str
     gemini_api_key: str
-    database_url: str
+    #database_url: str
+
+    # AWS / Bedrock
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
+    aws_region: str = "eu-west-1"
+    aws_bedrock_model_id: str = "eu.amazon.nova-2-lite-v1:0"
+
 
     # LangChain / LangSmith Tracing
     langsmith_tracing: str = "false"

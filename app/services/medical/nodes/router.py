@@ -35,11 +35,18 @@ class RouterNode:
         user_input = state["input_message"].strip().lower()
         current_date = datetime.now().strftime("%Y-%m-%d")
 
-        # 0. 緩存優化：如果 input_message 沒變且已有 intent，直接返回當前 state 即可 (由 Edge 決定去向)
-        last_processed_input = state.get("last_processed_input")
-        if last_processed_input == user_input and state.get("intent"):
-            logger.info(f"[Router Cache] 偵測到重複輸入，沿用意圖: {state.get('intent')}")
-            return {"last_processed_input": user_input}
+        # 【核心修正】: 徹底移除緩存沿用邏輯，確保每次輸入都重新解析日期
+        # 並在進入時主動宣告要重置的欄位，防止舊數據 (ui_data, query_start/end) 污染
+        reset_fields = {
+            "ui_data": None,
+            "context_data": None,
+            "data_count": 0,
+            "query_start": None,
+            "query_end": None,
+            "is_data_missing": False,
+            "final_response": "",
+            "last_processed_input": user_input
+        }
 
         # 1. 獲取最後一則 AI 訊息作為上下文參考
         last_ai_message = ""
@@ -67,7 +74,7 @@ class RouterNode:
             res: RouterOutput = await structured_llm.ainvoke(full_prompt)
             final_intent = res.intent
             logger.info(
-                f"[Router Decision] 識別意圖: {final_intent}, 日期: {res.query_start} ~ {res.query_end}"
+                f"[Router Decision] 識別意圖: {final_intent}, 解析日期: {res.query_start} ~ {res.query_end}"
             )
 
             # 動態準備 Skill 指令 (Skill Prep)
@@ -76,20 +83,15 @@ class RouterNode:
                 skill_instructions = load_specialized_skill.invoke(
                     {"skill_name": final_intent})
 
+            # 合併重置欄位與新解析的結果
             return {
+                **reset_fields,
                 "intent": final_intent,
                 "last_intent": final_intent,
                 "query_start": res.query_start,
                 "query_end": res.query_end,
                 "skill_instructions": skill_instructions,
-                "last_processed_input": user_input,
-                # 每次進入 Router 都重置狀態位與數據，避免汙染
-                "is_data_missing": False,
-                "ui_data": None,
-                "context_data": None,
-                "final_response": "",
-                "data_count": 0
             }
         except Exception as e:
             logger.error(f"[Router Error] LLM 呼叫失敗: {e}")
-            return {"intent": "general", "last_processed_input": user_input}
+            return {**reset_fields, "intent": "general"}

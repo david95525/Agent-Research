@@ -118,19 +118,20 @@ async function sendMessage() {
                 const jsonStr = line.replace("data: ", "");
                 try {
                     const event = JSON.parse(jsonStr);
+                    const contentText = getText(event.content);
 
                     if (event.type === "status") {
-                        statusEl.innerText = event.content;
+                        statusEl.innerText = contentText;
                     } else if (event.type === "stream") {
                         // 處理換行符號並即時顯示文字 (打字機效果)
-                        textEl.innerHTML += event.content.replace(/\n/g, '<br>');
+                        textEl.innerHTML += contentText.replace(/\n/g, '<br>');
                     } else if (event.type === "graph") {
                         // 即時更新流程圖
                         await renderGraph(event);
                     } else if (event.type === "interrupt") {
                         statusEl.style.display = "none"; // 隱藏狀態列
                         // 中斷時顯示問題，如果 stream 已經有部分內容，則追加
-                        textEl.innerHTML = event.content.replace(/\n/g, '<br>');
+                        textEl.innerHTML = contentText.replace(/\n/g, '<br>');
                         extraEl.innerHTML = `<div class="interrupt-hint">💡 需要補充資訊以繼續</div>`;
                     } else if (event.type === "final") {
                         const payload = event.data;
@@ -173,6 +174,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const userInput = document.getElementById('userInput');
     const graphContainer = document.getElementById('mermaid-graph');
 
+    // 獲取並顯示 Provider 資訊
+    async function fetchConfig() {
+        try {
+            const response = await fetch('/api/v1/config');
+            const config = await response.json();
+            const providerEl = document.getElementById('provider-info');
+            if (providerEl) {
+                providerEl.innerText = `${config.llm_provider.toUpperCase()} (${config.model_id})`;
+            }
+        } catch (err) {
+            console.error("Failed to fetch config:", err);
+        }
+    }
+    fetchConfig();
+
     // 監聽按鈕點擊
     if (sendBtn) {
         sendBtn.addEventListener('click', sendMessage);
@@ -196,7 +212,7 @@ function beautifyContent(payload) {
     if (!payload || payload.intent === 'error') {
         return `<div class="msg-error">❌ ${payload?.text || "系統處理異常"}</div>`;
     }
-    let text = payload.text || "";
+    let text = getText(payload.text) || "";
     // 給予預設文字
     if (payload.intent === 'health_query' && !text) {
         text = "已為您讀取紀錄明細如下：";
@@ -237,6 +253,18 @@ function beautifyContent(payload) {
     }
 
     return `<div class="content-body">${text}</div>${extraHTML}`;
+}
+
+/**
+ * 輔助函數：統一提取文字內容，相容 Bedrock 陣列格式與 Google 字串格式
+ */
+function getText(content) {
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.map(item => item.text || '').join('');
+    }
+    return '';
 }
 
 /**

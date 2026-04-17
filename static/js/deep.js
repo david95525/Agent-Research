@@ -118,6 +118,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const startBtn = document.getElementById('startBtn');
     const symbolInput = document.getElementById('symbolInput');
 
+    // 獲取並顯示 Provider 資訊
+    async function fetchConfig() {
+        try {
+            const response = await fetch('/api/v1/config');
+            const config = await response.json();
+            const providerEl = document.getElementById('provider-info');
+            if (providerEl) {
+                providerEl.innerText = `${config.llm_provider.toUpperCase()} (${config.model_id})`;
+            }
+        } catch (err) {
+            console.error("Failed to fetch config:", err);
+        }
+    }
+    fetchConfig();
+
     // 監聽點擊「開始深度分析」按鈕
     if (startBtn) {
         startBtn.addEventListener('click', () => {
